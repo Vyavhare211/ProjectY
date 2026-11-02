@@ -1,4 +1,4 @@
-# Orbit Tube AI — YouTube AI Summarizer & Grounded Video Q&A Assistant
+# ProjectY — YouTube AI Summarizer & Grounded Video Q&A Assistant
 
 > **A full-stack, college-project web application that allows authenticated users to submit a YouTube video URL, watch the lecture inside the official YouTube embedded player, and ask questions to a Google Gemini-powered AI that is strictly grounded in the video's transcript.**
 
@@ -8,7 +8,7 @@
 
 Educational videos and online lectures on YouTube are among the world's most valuable learning resources. However, students often struggle to locate specific explanations, verify core concepts, or quickly review key sections of long 1-to-3 hour videos.
 
-**Orbit Tube AI** bridges this gap by creating a focused learning workspace:
+**ProjectY** bridges this gap by creating a focused learning workspace:
 1. **Official YouTube IFrame Player**: Watch videos inside the web application with full player controls without downloading or re-hosting video files.
 2. **Transcript Processing & Semantic Retrieval**: The backend extracts official/automatic captions, cleans HTML entities, and divides the transcript into timestamped chunks.
 3. **Strict AI Grounding (Anti-Hallucination Engine)**: Powered by **Google Gemini 3.8 Flash** via the official `@google/genai` SDK. The AI is constrained strictly to the video transcript context. If the answer cannot be found in the lecture, the AI explicitly answers: *"I couldn't find that information in this video."*
@@ -90,7 +90,7 @@ Educational videos and online lectures on YouTube are among the world's most val
 ## 📂 Project Directory Structure
 
 ```
-youtube-ai-summarizer/
+ProjectY/
 ├── firestore.rules               # Production-grade Firestore security rules
 ├── package.json                  # Root runner scripts
 ├── README.md                     # Comprehensive project documentation
@@ -173,7 +173,7 @@ youtube-ai-summarizer/
 
 ### 2. Clone / Open Workspace
 ```bash
-cd C:\Users\rudra\.gemini\antigravity\scratch\youtube-ai-summarizer
+cd ProjectY
 ```
 
 ### 3. Install Dependencies
