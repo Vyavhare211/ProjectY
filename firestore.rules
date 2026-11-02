@@ -1,0 +1,198 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model & Access Boundaries
+    // ===============================================================
+    //
+    // Collection: users/{userId}
+    //   - Document ID: Firebase Auth UID of the user
+    //   - Fields:
+    //     * uid: string (required, matches auth.uid, immutable)
+    //     * email: string | null (optional, valid email format, <= 254 chars)
+    //     * displayName: string | null (optional, <= 100 chars)
+    //     * photoURL: string | null (optional, valid URL, <= 2000 chars)
+    //     * createdAt: timestamp (required, immutable)
+    //     * updatedAt: timestamp (required)
+    //
+    // Subcollection: users/{userId}/sessions/{sessionId}
+    //   - Document ID: Unique session identifier
+    //   - Fields:
+    //     * id: string (required, matches sessionId, <= 128 chars, immutable)
+    //     * userId: string (required, matches auth.uid, immutable)
+    //     * videoId: string (required, 1-50 chars)
+    //     * videoUrl: string (required, valid HTTP/HTTPS URL, <= 2000 chars)
+    //     * title: string (required, 1-500 chars)
+    //     * channelTitle: string | null (optional, <= 200 chars)
+    //     * thumbnail: string | null (optional, valid URL, <= 2000 chars)
+    //     * duration: string | null (optional, <= 50 chars)
+    //     * transcriptChunkCount: number | null (optional, >= 0)
+    //     * transcriptChunks: list | null (optional, size <= 500)
+    //     * summary: string | null (optional, <= 50000 chars)
+    //     * createdAt: timestamp (required, immutable)
+    //     * updatedAt: timestamp (required)
+    //
+    // Subcollection: users/{userId}/sessions/{sessionId}/messages/{messageId}
+    //   - Document ID: Unique message identifier
+    //   - Fields:
+    //     * id: string (required, matches messageId, <= 128 chars, immutable)
+    //     * sessionId: string (required, matches sessionId, <= 128 chars, immutable)
+    //     * userId: string (required, matches auth.uid, immutable)
+    //     * role: string (required, 'user' | 'assistant')
+    //     * content: string (required, 1-50000 chars)
+    //     * grounded: bool | null (optional)
+    //     * confidence: string | null (optional, 'supported' | 'partial' | 'unsupported')
+    //     * sourceSegments: list | null (optional, size <= 50)
+    //     * createdAt: timestamp (required, immutable)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Global Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUrl(url) {
+      return url is string &&
+        url.size() <= 2000 &&
+        (url.matches("^https://.*") || url.matches("^http://.*"));
+    }
+
+    function isValidEmail(email) {
+      return email is string &&
+        email.size() <= 254 &&
+        email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    // ===============================================================
+    // Domain Validator Functions
+    // ===============================================================
+
+    // --- User Profile Validator ---
+    function isValidUser(data, userId) {
+      let allowedKeys = ['uid', 'email', 'displayName', 'photoURL', 'createdAt', 'updatedAt'];
+      let requiredKeys = ['uid', 'createdAt', 'updatedAt'];
+
+      return data.keys().hasAll(requiredKeys) &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.uid == userId &&
+        data.uid == request.auth.uid &&
+        (!('email' in data) || data.email == null || isValidEmail(data.email)) &&
+        (!('displayName' in data) || data.displayName == null || (data.displayName is string && data.displayName.size() <= 100)) &&
+        (!('photoURL' in data) || data.photoURL == null || (data.photoURL is string && isValidUrl(data.photoURL))) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // --- Video Session Validator ---
+    function isValidSession(data, userId, sessionId) {
+      let allowedKeys = [
+        'id', 'userId', 'videoId', 'videoUrl', 'title',
+        'channelTitle', 'thumbnail', 'duration',
+        'transcriptChunkCount', 'transcriptChunks', 'summary',
+        'createdAt', 'updatedAt'
+      ];
+      let requiredKeys = ['id', 'userId', 'videoId', 'videoUrl', 'title', 'createdAt', 'updatedAt'];
+
+      return data.keys().hasAll(requiredKeys) &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.id == sessionId &&
+        data.id is string && data.id.size() <= 128 &&
+        data.userId == userId &&
+        data.userId == request.auth.uid &&
+        data.videoId is string && data.videoId.size() >= 1 && data.videoId.size() <= 50 &&
+        isValidUrl(data.videoUrl) &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 500 &&
+        (!('channelTitle' in data) || data.channelTitle == null || (data.channelTitle is string && data.channelTitle.size() <= 200)) &&
+        (!('thumbnail' in data) || data.thumbnail == null || (data.thumbnail is string && isValidUrl(data.thumbnail))) &&
+        (!('duration' in data) || data.duration == null || (data.duration is string && data.duration.size() <= 50)) &&
+        (!('transcriptChunkCount' in data) || data.transcriptChunkCount == null || ((data.transcriptChunkCount is int || data.transcriptChunkCount is float) && data.transcriptChunkCount >= 0)) &&
+        (!('transcriptChunks' in data) || data.transcriptChunks == null || (data.transcriptChunks is list && data.transcriptChunks.size() <= 500)) &&
+        (!('summary' in data) || data.summary == null || (data.summary is string && data.summary.size() <= 50000)) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    // --- Chat Message Validator ---
+    function isValidMessage(data, userId, sessionId, messageId) {
+      let allowedKeys = [
+        'id', 'sessionId', 'userId', 'role', 'content',
+        'grounded', 'confidence', 'sourceSegments', 'createdAt'
+      ];
+      let requiredKeys = ['id', 'sessionId', 'userId', 'role', 'content', 'createdAt'];
+
+      return data.keys().hasAll(requiredKeys) &&
+        data.keys().hasOnly(allowedKeys) &&
+        data.id == messageId &&
+        data.id is string && data.id.size() <= 128 &&
+        data.sessionId == sessionId &&
+        data.sessionId is string && data.sessionId.size() <= 128 &&
+        data.userId == userId &&
+        data.userId == request.auth.uid &&
+        data.role in ['user', 'assistant'] &&
+        data.content is string && data.content.size() > 0 && data.content.size() <= 50000 &&
+        (!('grounded' in data) || data.grounded == null || data.grounded is bool) &&
+        (!('confidence' in data) || data.confidence == null || data.confidence in ['supported', 'partial', 'unsupported']) &&
+        (!('sourceSegments' in data) || data.sourceSegments == null || (data.sourceSegments is list && data.sourceSegments.size() <= 50)) &&
+        data.createdAt is timestamp;
+    }
+
+    // ===============================================================
+    // Root Default Deny
+    // ===============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // --- User Profile Document ---
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+                      isValidUser(request.resource.data, userId);
+      allow update: if isOwner(userId) &&
+                      isValidUser(request.resource.data, userId) &&
+                      request.resource.data.uid == resource.data.uid &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isOwner(userId);
+
+      // --- Video Sessions Subcollection ---
+      match /sessions/{sessionId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) &&
+                        isValidSession(request.resource.data, userId, sessionId);
+        allow update: if isOwner(userId) &&
+                        isValidSession(request.resource.data, userId, sessionId) &&
+                        request.resource.data.id == resource.data.id &&
+                        request.resource.data.userId == resource.data.userId &&
+                        request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isOwner(userId);
+
+        // --- Session Messages Subcollection ---
+        match /messages/{messageId} {
+          allow read: if isOwner(userId);
+          allow create: if isOwner(userId) &&
+                          isValidMessage(request.resource.data, userId, sessionId, messageId);
+          allow update: if isOwner(userId) &&
+                          isValidMessage(request.resource.data, userId, sessionId, messageId) &&
+                          request.resource.data.id == resource.data.id &&
+                          request.resource.data.sessionId == resource.data.sessionId &&
+                          request.resource.data.userId == resource.data.userId &&
+                          request.resource.data.createdAt == resource.data.createdAt;
+          allow delete: if isOwner(userId);
+        }
+      }
+    }
+  }
+}
+
